@@ -1,4 +1,5 @@
 #!/bin/bash
+logFile="uds-installation.log"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -18,6 +19,10 @@ function echoBlue() {
   echo -e "${BLUE}$1${NC}"
 }
 
+function echoLine() {
+  echoYellow "----------------------------------------------------------------------------------------"
+}
+
 function echoYellow() {
   echo -e "${YELLOW}$1${NC}"
 }
@@ -28,11 +33,20 @@ function displayStepHeader() {
 }
 
 function stepLog() {
-  echo -e "STEP $1/12: $2"
+  echo -e "STEP $1/16: $2"
+}
+
+function displayStepHeaderTest() {
+  stepHeader=$(stepLogTest "$1" "$2")
+  echoBlue "$stepHeader"
+}
+
+function stepLogTest() {
+  echo -e "STEP $1/5: $2"
 }
 
 function validatePropertiesfile(){
-  file="./cr.properties"
+  file="./uds-cr.properties"
   if [ -f "$file" ]
   then
     echo "$file found."
@@ -40,7 +54,7 @@ function validatePropertiesfile(){
     do
       key_name=$(echo $key | grep -v '^#')
 
-      if [[ -z "$key_name" || "$key_name" == " " || $key_name == " " ]];then
+      if [[ -z "$key_name" || "$key_name" == " " || $key_name == " " || $key_name == "http_proxy" || $key_name == "https_proxy" || $key_name == "no_proxy" || $key_name == "uds_host" || $key_name == "airgap_host"  ]];then
         continue
       fi
       if [[ -z "${!key_name}" || "${!key_name}" == "" || ${!key_name} == "" ]]; then
@@ -57,7 +71,7 @@ function validatePropertiesfile(){
 
 function checkPropertyValuesprompt(){
   echoBlue "Please check below Properties values and confirm to Continue with installation"
-  file="./cr.properties"
+  file="./uds-cr.properties"
 
   while IFS= read -r line
   do
@@ -112,7 +126,7 @@ function createProject(){
       exit 0;
     fi
   else
-    oc new-project "${projectName}" &>>"${logFile}" 
+    oc new-project "${projectName}" 1>>a 2>&1 "${logFile}"
       if [ $? -ne 0 ];then
 	echoRed "FAILED: Project:${projectName} creation failed"
 	exit 1
@@ -140,7 +154,7 @@ function checkDeploymentStatus() {
 	check_for_deployment_status=$(oc get csv -n "$projectName" --ignore-not-found | awk '$1 ~ /user-data-services-operator/ { print }' | awk -F' ' '{print $NF}')
 	until [[ $retries -eq $retryCount || $check_for_deployment_status = "Ready" ]]; do
 		sleep 30
-		check_for_deployment_status=$(oc get AnalyticsProxy analyticsproxydeployment --output="jsonpath={.status.phase}")
+		check_for_deployment_status=$(oc get analyticsproxy.uds.ibm.com/analyticsproxydeployment --output="jsonpath={.status.phase}")
 		retries=$((retries + 1))
 	done
 	echo "$check_for_deployment_status"
@@ -158,6 +172,22 @@ function getGenerateAPIKey() {
 	done
 	if [[ $check_for_key != "" ]]; then
 	   check_for_key=$(oc get secret uds-api-key --output="jsonpath={.data.apikey}" | base64 -d)
+	fi
+	echo "$check_for_key"
+}
+
+function getSubmoduleAPIKey() {
+
+	retryCount=10
+	retries=0
+	check_for_key=$(oc get secret submodule-service-key-secret --ignore-not-found)
+	until [[ $retries -eq $retryCount || $check_for_key != "" ]]; do
+		sleep 5
+		check_for_key=$(oc get secret submodule-service-key-secret --ignore-not-found)
+		retries=$((retries + 1))
+	done
+	if [[ $check_for_key != "" ]]; then
+	   check_for_key=$(oc get secret submodule-service-key-secret --output="jsonpath={.data.apikey}" | base64 -d)
 	fi
 	echo "$check_for_key"
 }
